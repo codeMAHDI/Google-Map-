@@ -1,0 +1,158 @@
+1. Add package-> google_maps_flutter: ^2.10.1
+2. Go to google development consol to get an API.
+3. Create dart file under lib-> constants.dart(Save the API key here)
+4. Add this on AndroidManifest.xml under application tag->
+   <meta-data android:name="com.google.android.geo.API_KEY"
+              android:value="AIzaSyAJzG11w-wiuZXO68H4FuN52mve2DyyavM"/>
+5. Ios AppDelegate.swift import->
+   import GoogleMaps
+   then inside bool add this->
+   GMSServices.provideAPIKey("AIzaSyAJzG11w-wiuZXO68H4FuN52mve2DyyavM")
+6. First we need to provide the initial position.
+    static const googlePlex= LatLng(37.4223, -122.0848);//Map initial possition(lat, lon) google head querter value(37.4223, -122.0848)
+    Then create marker inside GoogleMap.
+7. Then add another marker for destination.
+8. Now we want to detect the current location when we open the Map.
+   Thats why lets declare a variable,
+   LatLng? currentPosition;//?-> because initially we don't know what is will be the current location
+   Then inside init state we'll try to know what is the current position.
+9. But how to detect the current position. Thats why we'll use this package->
+   location: ^5.0.0
+   Then add on AndroidManifest.xml->
+   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+   <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+   Then inside Info.plist add this->
+	<string>NSLocationWhenInUseUsageDescription</string>
+	<key>To display and track location</key>
+	<string>NSLocationAlwaysAndWhenInUseUsageDescription</string>
+	<key>To display and track location</key>
+10. Now create a method inside state to find the current location.
+    Future<void> fetchLocationUpdates()async
+    Now first we need to know is the service in enabled.
+    bool serviceEnabled;
+    Then,
+    PermissionStatus permissionGranted;
+11. Now we'll check  service is enbled or not.
+    To know this we'll take the value from location package.
+    Thats why we've to declare a controller like->
+    final locationController =Location();
+    And we'll request on this controller.
+    serviceEnabled= await locationController.serviceEnabled();//yes or no
+    Now we'll check->
+     if(serviceEnabled){
+          serviceEnabled= await locationController.requestService();
+        }else{
+          return;//Nothing to do just return
+        }
+     Now we'll check is the permission is granted or not->
+     permissionGranted= await locationController.hasPermission();//granted or denied
+         if(permissionGranted==PermissionStatus.denied){
+           permissionGranted= await locationController.requestPermission();//If denied we'll request
+           if(permissionGranted!=PermissionStatus.granted){//If permission is not granted then nothing to do just return
+             return;
+           }
+         }
+     Now lets say service is Enabled and also permission is granted we'll do->
+     Just listen the value when it changes->
+      locationController.onLocationChanged.listen((currentLocation){
+           if(currentLocation.latitude!=null && currentLocation.longitude!=null){
+             setState(() {
+               currentPosition=LatLng(currentLocation.latitude!, currentLocation.longitude!);
+             });
+           }
+         });
+      Now call the fetchLocationUpdates(); inside init state.
+      Then add another marker for currentLocation.
+      Then if current position is null the we've write a conditon inside body->
+      currentPosition==null?const Center(child: CircularProgressIndicator(),):GoogleMap(),
+
+12. Now we can also change the initial camera position.
+    1. inside state declare-> CameraPosition _initialCameraPosition= CameraPosition(
+             target: googlePlex, zoom: 13
+         );
+    2. inside set state->
+     _initialCameraPosition= CameraPosition(
+                target: currentPosition!
+              );
+     Note:if we do this we'll get updated maker based on current position and also
+     the camera view will be changed.Also we can change Map type, Map tiled.
+13. Now we want to draw the route between source to destination.
+    For this we'll use this package flutter_polyline_points: ^2.1.0
+    which is basically->
+    A flutter plugin that decodes encoded google polyline string into
+    list of geo-coordinates suitable for showing route/polyline on maps
+    Now we've detect the polyline. How to do that->
+    We need lists of coordinates.
+    Lets create a method after fetchLocationUpdates().
+      Future<void> fetchPolyLinePoints()async{
+        final polyLinePoints= PolylinePoints();//get the polyline points
+        //He can give me the coordinates between two locations. how?
+        final result= await polyLinePoints.getRouteBetweenCoordinates(// Params Api key ,  source and destination lat ,lon.
+            googleApiKey: googleMapsApiKey,
+          request: PolylineRequest(
+              origin: PointLatLng(googlePlex.latitude, googlePlex.longitude),//Current position
+              destination: PointLatLng(mountainView.latitude, mountainView.longitude),//Destination position
+              mode:TravelMode.driving//Mode: travel mode
+          )
+        );
+      }
+      Now we've to check the result. Because the provided  origin and destination might be wrong.
+      So we've to make sure that->
+      result.points.isNotEmpty-> Only then we convert this into list of coordinates.
+      So if we return list of coordinates then the return type of method will not be void .
+      It will be list of Latlon.
+      So condition will be->
+       if(result.points.isNotEmpty){
+            return result.points.map((point)=>LatLng(point.latitude, point.longitude)).toList();//I will map each of one on in lat, lon
+          }else{
+            return[];// if it is empty then return empty list
+          }
+14. Now we just got all the lat, lon between two coordinates.
+    Now we've to take the lat, lon list.
+    So after the init state create a method->
+      Future<void> initializeGoogleMap()async{
+        await fetchLocationUpdates();// Then call this on init state. call this when the whole frame is done to draw.
+      }
+    Then on init state->
+    WidgetsBinding.instance.addPostFrameCallback((_)async=>await initializeGoogleMap());//insure first initialize done. is a Flutter statement used to delay the execution of the initializeGoogleMap() function until after the current frame is rendered.
+    Then inside initializeGoogleMap() method->
+    final coordinates= await fetchPolyLinePoints();//Get the coordinates
+    We've the list but we need to draw a full poly line. how to do that->
+    So, we've to declare a Map in the state->
+    Map<PolylineId,Polyline> polylines={};//PolylineId- for multiple route. initially emplty map.
+    Now we'll use this polylines.
+    Lets create a method->
+      Future<void> generatePolyLineFromPoints//That means all lat, lon(List<LatLng> polylineCoordinates)async{//list of lat, lon means->polylineCoordinates
+        const id= PolylineId('polyline');
+        final polyline= Polyline(polylineId: id,
+        color: Colors.black54,
+          points: polylineCoordinates,
+          width: 7
+        );
+        setState(() {
+          polylines[id]= polyline;
+        });
+      }
+    Now call this method on initializeGoogleMap()->
+    generatePolyLineFromPoints(coordinates);
+15. Now inside body after the marker we've write->
+    polylines: Set<Polyline>.of(polylines.values),//(.of)From which value we want to create poly line.
+    this is for to make sure the google map knows the Polyline.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
