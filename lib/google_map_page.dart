@@ -21,7 +21,6 @@ class _GoogleMapPageState extends State<GoogleMapPage> {
   LatLng? currentPosition;
   Map<PolylineId,Polyline> polylines={};
 
-
   @override
   void initState() {
     super.initState();
